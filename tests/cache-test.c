@@ -61,6 +61,14 @@ server_callback (SoupServer        *server,
 					     etag);
 	}
 
+	header = soup_message_headers_get_one (request_headers,
+					       "Test-Set-Vary");
+	if (header) {
+		soup_message_headers_append (response_headers,
+					     "Vary",
+					     header);
+	}
+
 
 	header = soup_message_headers_get_one (request_headers,
 					       "If-Modified-Since");
@@ -473,6 +481,90 @@ do_basics_test (gconstpointer data)
 	g_free (body3);
 	g_free (body4);
 	g_free (body5);
+}
+
+static void
+do_vary_test (gconstpointer data)
+{
+	GUri *base_uri = (GUri *)data;
+	SoupSession *session;
+	SoupCache *cache;
+	char *cache_dir;
+	char *body1, *body2, *cmp;
+
+	cache_dir = g_dir_make_tmp ("cache-test-XXXXXX", NULL);
+	debug_printf (2, "  Caching to %s\n", cache_dir);
+	cache = soup_cache_new (cache_dir, SOUP_CACHE_SINGLE_USER);
+	session = soup_test_session_new (NULL);
+        soup_session_add_feature (session, SOUP_SESSION_FEATURE (cache));
+
+	g_signal_connect (session, "request-queued",
+			  G_CALLBACK (request_queued), NULL);
+	g_signal_connect (session, "request-unqueued",
+			  G_CALLBACK (request_unqueued), NULL);
+
+	/* Fresh, Vary-bearing resource goes to the network first */
+	debug_printf (1, "  Initial Vary resource\n");
+	body1 = do_request (session, base_uri, "GET", "/v", NULL,
+			    "Test-Set-Vary", "Accept-Language",
+			    "Test-Set-Last-Modified", "Fri, 01 Jan 2010 00:00:00 GMT",
+			    "Test-Set-Expires", "Fri, 01 Jan 2100 00:00:00 GMT",
+			    NULL);
+	soup_test_assert (last_request_hit_network,
+			  "Initial request for /v not filled from network");
+
+	/* A repeat must revalidate, not be served blindly: the entry
+	 * cannot prove the stored variant matches this request.
+	 */
+	debug_printf (1, "  Vary resource must revalidate\n");
+	cmp = do_request (session, base_uri, "GET", "/v", NULL,
+			  "Test-Set-Last-Modified", "Fri, 01 Jan 2010 00:00:00 GMT",
+			  NULL);
+	soup_test_assert (last_request_validated,
+			  "Request for Vary resource /v served from cache without validation");
+	soup_test_assert (!last_request_hit_network,
+			  "Request for /v not filled from cache after validation");
+	soup_test_assert (last_request_unqueued,
+			  "Cached resource /v not unqueued");
+	g_assert_cmpstr (body1, ==, cmp);
+	g_free (cmp);
+
+	/* A different value in the nominated dimension must also
+	 * revalidate rather than receive the stored variant.
+	 */
+	debug_printf (1, "  Vary resource with different dimension\n");
+	cmp = do_request (session, base_uri, "GET", "/v", NULL,
+			  "Accept-Language", "fr",
+			  "Test-Set-Last-Modified", "Fri, 01 Jan 2010 00:00:00 GMT",
+			  NULL);
+	soup_test_assert (last_request_validated,
+			  "Request for /v with different Accept-Language served without validation");
+	g_assert_cmpstr (body1, ==, cmp);
+	g_free (cmp);
+
+	/* "Vary: *" can never be served from cache without validation */
+	debug_printf (1, "  Vary-star resource\n");
+	body2 = do_request (session, base_uri, "GET", "/w", NULL,
+			    "Test-Set-Vary", "*",
+			    "Test-Set-Last-Modified", "Fri, 01 Jan 2010 00:00:00 GMT",
+			    "Test-Set-Expires", "Fri, 01 Jan 2100 00:00:00 GMT",
+			    NULL);
+	soup_test_assert (last_request_hit_network,
+			  "Initial request for /w not filled from network");
+	cmp = do_request (session, base_uri, "GET", "/w", NULL,
+			  "Test-Set-Last-Modified", "Fri, 01 Jan 2010 00:00:00 GMT",
+			  NULL);
+	soup_test_assert (last_request_validated,
+			  "Request for Vary-star resource /w served from cache without validation");
+	g_assert_cmpstr (body2, ==, cmp);
+	g_free (cmp);
+
+	soup_test_session_abort_unref (session);
+	g_object_unref (cache);
+
+	g_free (cache_dir);
+	g_free (body1);
+	g_free (body2);
 }
 
 static void
@@ -1159,6 +1251,7 @@ main (int argc, char **argv)
 	base_uri = soup_test_server_get_uri (server, "http", NULL);
 
 	g_test_add_data_func ("/cache/basics", base_uri, do_basics_test);
+	g_test_add_data_func ("/cache/vary", base_uri, do_vary_test);
 	g_test_add_data_func ("/cache/cancellation", base_uri, do_cancel_test);
 	g_test_add_data_func ("/cache/refcounting", base_uri, do_refcounting_test);
 	g_test_add_data_func ("/cache/headers", base_uri, do_headers_test);

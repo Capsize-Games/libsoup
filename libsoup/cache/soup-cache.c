@@ -1207,9 +1207,15 @@ soup_cache_has_response (SoupCache *cache, SoupMessage *msg)
 
 	/* 3. Selecting request-headers nominated by the stored
 	 * response (if any) match those presented.
+	 *
+	 * The entry does not retain the original request headers, so a
+	 * full Vary comparison is impossible. A stored Vary (including
+	 * "Vary: *", which must never be served from cache) means the
+	 * response cannot be matched blindly: force revalidation so the
+	 * server decides.
 	 */
-
-	/* TODO */
+	if (soup_message_headers_get_one_common (entry->headers, SOUP_HEADER_VARY))
+		return SOUP_CACHE_RESPONSE_NEEDS_VALIDATION;
 
 	/* 4. The request is a conditional request issued by the client.
 	 */
