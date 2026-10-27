@@ -750,6 +750,28 @@ do_cookies_threads_test (void)
         soup_test_session_abort_unref (session);
 }
 
+/* CVE-2025-4035: cookies for a public suffix domain must be rejected
+ * even when the domain uses uppercase characters. */
+static void
+do_cookies_public_suffix_test (void)
+{
+	SoupCookieJar *jar = soup_cookie_jar_new ();
+	GUri *uri = g_uri_parse ("http://example.CO.uk", SOUP_HTTP_URI_FLAGS, NULL);
+	GSList *cookies;
+
+	g_assert_nonnull (uri);
+	soup_cookie_jar_set_cookie (jar, uri, "value=1; domain=.co.uk");
+	soup_cookie_jar_set_cookie (jar, uri, "value=1; domain=.CO.uk");
+	soup_cookie_jar_set_cookie (jar, uri, "value=1; domain=.CO.UK");
+
+	cookies = soup_cookie_jar_all_cookies (jar);
+	g_assert_cmpint (g_slist_length (cookies), ==, 0);
+	g_slist_free_full (cookies, (GDestroyNotify)soup_cookie_free);
+
+	g_uri_unref (uri);
+	g_object_unref (jar);
+}
+
 /**
  * do_cookies_persistence_test:
  *
@@ -1312,6 +1334,7 @@ main (int argc, char **argv)
 	g_test_add_func ("/cookies/secure-cookies", do_cookies_strict_secure_test);
 	g_test_add_func ("/cookies/prefix", do_cookies_prefix_test);
         g_test_add_func ("/cookies/threads", do_cookies_threads_test);
+	g_test_add_func ("/cookies/public-suffix", do_cookies_public_suffix_test);
 	g_test_add_func ("/cookies/db-jar/init-failure", do_cookies_db_init_failure_test);
 	g_test_add_func ("/cookies/db-jar/persistence", do_cookies_persistence_test);
 	g_test_add_func ("/cookies/db-jar/persistence/max-size-default", do_cookies_persistence_default_db_max_size_test);

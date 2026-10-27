@@ -570,3 +570,23 @@ soup_uri_get_host_for_headers (GUri *uri)
 
         return g_strdup (host);
 }
+
+char *
+soup_uri_normalize_domain (const char *domain)
+{
+        char *lower;
+        char *normalized;
+
+        /* NULL-tolerant: historical call sites (soup_cookie_set_domain(),
+         * cookie_new_internal(), parse fallbacks) treat NULL as valid. */
+        g_return_val_if_fail (domain != NULL, NULL);
+
+        if (g_str_is_ascii (domain))
+                return g_ascii_strdown (domain, -1);
+
+        lower = g_utf8_casefold (domain, -1);
+        normalized = g_utf8_normalize (lower, -1, G_NORMALIZE_NFKC);
+        g_free (lower);
+
+        return normalized;
+}

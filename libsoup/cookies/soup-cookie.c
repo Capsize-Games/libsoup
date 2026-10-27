@@ -221,12 +221,17 @@ parse_one_cookie (const char *header, GUri *origin)
 
 		if (MATCH_NAME ("domain") && has_value) {
                         char *new_domain = parse_value (&p, TRUE);
+                        char *normalized;
                         if (strlen (new_domain) > MAX_ATTRIBUTE_SIZE) {
                             g_free (new_domain);
                             continue;
                         }
+			/* Normalize case so public-suffix checks cannot
+			 * be bypassed with uppercase domains. */
+			normalized = soup_uri_normalize_domain (new_domain);
+			g_free (new_domain);
 			g_free (cookie->domain);
-			cookie->domain = g_steal_pointer (&new_domain);
+			cookie->domain = normalized;
 			if (!*cookie->domain) {
 				g_clear_pointer (&cookie->domain, g_free);
 			}
@@ -318,8 +323,10 @@ parse_one_cookie (const char *header, GUri *origin)
 				soup_cookie_free (cookie);
 				return NULL;
 			}
-		} else
-			cookie->domain = g_strdup (g_uri_get_host (origin));
+		} else if (g_uri_get_host (origin))
+			cookie->domain = soup_uri_normalize_domain (g_uri_get_host (origin));
+		else
+			cookie->domain = NULL;
 
 		/* The original cookie spec didn't say that pages
 		 * could only set cookies for paths they were under.
@@ -362,7 +369,7 @@ cookie_new_internal (const char *name, const char *value,
 	cookie = g_slice_new0 (SoupCookie);
 	cookie->name = g_strdup (name);
 	cookie->value = g_strdup (value);
-	cookie->domain = g_strdup (domain);
+	cookie->domain = domain ? soup_uri_normalize_domain (domain) : NULL;
 	cookie->path = g_strdup (path);
 	soup_cookie_set_max_age (cookie, max_age);
 	cookie->same_site_policy = SOUP_SAME_SITE_POLICY_LAX;
@@ -535,7 +542,7 @@ void
 soup_cookie_set_domain (SoupCookie *cookie, const char *domain)
 {
 	g_free (cookie->domain);
-	cookie->domain = g_strdup (domain);
+	cookie->domain = domain ? soup_uri_normalize_domain (domain) : NULL;
 }
 
 /**

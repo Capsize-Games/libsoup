@@ -530,7 +530,6 @@ incoming_cookie_is_third_party (SoupCookieJar            *jar,
 	SoupCookieJarPrivate *priv;
 	const char *normalized_cookie_domain;
 	const char *cookie_base_domain;
-	const char *first_party_base_domain;
         const char *first_party_host;
         gboolean retval;
 
@@ -550,12 +549,22 @@ incoming_cookie_is_third_party (SoupCookieJar            *jar,
 	if (cookie_base_domain == NULL)
 		cookie_base_domain = soup_cookie_get_domain (cookie);
 
-	first_party_base_domain = soup_tld_get_base_domain (first_party_host, NULL);
-	if (first_party_base_domain == NULL)
-		first_party_base_domain = first_party_host;
+	/* libpsl matching is case-sensitive: normalize the first-party
+	 * host so an uppercase host cannot bypass the public-suffix
+	 * gate (the cookie domain is normalized at ingress).
+	 */
+	{
+		char *normalized_first_party_host = soup_uri_normalize_domain (first_party_host);
+		const char *base = soup_tld_get_base_domain (normalized_first_party_host, NULL);
+		gboolean same_host;
 
-	if (soup_host_matches_host (cookie_base_domain, first_party_base_domain))
-		return FALSE;
+		if (base == NULL)
+			base = normalized_first_party_host;
+		same_host = soup_host_matches_host (cookie_base_domain, base);
+		g_free (normalized_first_party_host);
+		if (same_host)
+			return FALSE;
+	}
 
 	if (policy == SOUP_COOKIE_JAR_ACCEPT_NO_THIRD_PARTY)
 		return TRUE;

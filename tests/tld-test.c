@@ -177,6 +177,18 @@ do_non_inet_tests (void)
 	}
 }
 
+/* CVE-2025-4035: an uppercase public suffix must still be detected,
+ * otherwise cookies can be set for public suffix domains. */
+static void
+do_uppercase_suffix_tests (void)
+{
+	g_assert_true (soup_tld_domain_is_public_suffix ("CO.UK"));
+	g_assert_true (soup_tld_domain_is_public_suffix ("Co.Uk"));
+	g_assert_true (soup_tld_domain_is_public_suffix ("co.uk"));
+	g_assert_false (soup_tld_domain_is_public_suffix ("example.CO.UK"));
+	g_assert_false (soup_tld_domain_is_public_suffix ("example.co.uk"));
+}
+
 int
 main (int argc, char **argv)
 {
@@ -186,6 +198,7 @@ main (int argc, char **argv)
 
 	g_test_add_func ("/tld/inet", do_inet_tests);
 	g_test_add_func ("/tld/non-inet", do_non_inet_tests);
+	g_test_add_func ("/tld/uppercase-suffix", do_uppercase_suffix_tests);
 
 	ret = g_test_run ();
 

@@ -30,4 +30,9 @@ GUri        *soup_uri_copy_with_normalized_flags (GUri  *uri);
 
 char        *soup_uri_get_host_for_headers  (GUri       *uri);
 
+/* Lowercases ASCII domains; casefolds + normalizes non-ASCII ones.
+ * Returns NULL when @domain is NULL (preserves historical NULL semantics
+ * of g_strdup()-based call sites). */
+char        *soup_uri_normalize_domain      (const char *domain);
+
 G_END_DECLS
